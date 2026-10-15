@@ -1,46 +1,101 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 
 export default function TaskList({ tasks, filter, sort, dispatch }) {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("Exploración");
+  const inputRef = useRef(null);
 
-  const visibleTasks = tasks
-    .filter((task) => {
+  const processedTasks = useMemo(() => {
+    const visible = tasks.filter((task) => {
       if (filter === "active") return !task.done;
       if (filter === "completed") return task.done;
       return true;
-    })
-    .slice()
-    .sort((a, b) => {
+    });
+
+    return [...visible].sort((a, b) => {
       const result = a.title.localeCompare(b.title, "es");
       return sort === "asc" ? result : -result;
     });
+  }, [tasks, filter, sort]);
 
-  function handleSubmit(event) {
-    event.preventDefault();
+  const handleRemove = useCallback(
+    (id) => {
+      dispatch({ type: "REMOVE", id });
+    },
+    [dispatch],
+  );
 
-    if (!title.trim()) return;
+  const handleToggle = useCallback(
+    (id) => {
+      dispatch({ type: "TOGGLE", id });
+    },
+    [dispatch],
+  );
 
-    const xpByCategory = {
-      Exploración: 120,
-      Combate: 180,
-      Alquimia: 80,
-      Recolección: 100,
+  const handleFilter = useCallback(
+    (nextFilter) => {
+      dispatch({ type: "FILTER", filter: nextFilter });
+    },
+    [dispatch],
+  );
+
+  const handleSort = useCallback(() => {
+    dispatch({ type: "SORT" });
+  }, [dispatch]);
+
+  const handleSubmit = useCallback(
+    (event) => {
+      event.preventDefault();
+
+      if (!title.trim()) {
+        inputRef.current?.focus();
+        return;
+      }
+
+      const xpByCategory = {
+        Exploración: 120,
+        Combate: 180,
+        Alquimia: 80,
+        Recolección: 100,
+      };
+
+      dispatch({
+        type: "ADD",
+        task: {
+          id: globalThis.crypto?.randomUUID?.() ?? `quest-${Date.now()}`,
+          title: title.trim(),
+          category,
+          done: false,
+          xp: xpByCategory[category] ?? 100,
+        },
+      });
+
+      setTitle("");
+    },
+    [title, category, dispatch],
+  );
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [tasks.length]);
+
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      if (
+        event.key === "/" &&
+        !["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)
+      ) {
+        event.preventDefault();
+        inputRef.current?.focus();
+      }
     };
 
-    dispatch({
-      type: "ADD",
-      task: {
-        id: crypto.randomUUID(),
-        title: title.trim(),
-        category,
-        done: false,
-        xp: xpByCategory[category],
-      },
-    });
+    window.addEventListener("keydown", handleShortcut);
 
-    setTitle("");
-  }
+    return () => {
+      window.removeEventListener("keydown", handleShortcut);
+    };
+  }, []);
 
   return (
     <section className="task-panel">
@@ -48,6 +103,7 @@ export default function TaskList({ tasks, filter, sort, dispatch }) {
 
       <form onSubmit={handleSubmit} className="task-form">
         <input
+          ref={inputRef}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Escribe una misión..."
@@ -69,48 +125,18 @@ export default function TaskList({ tasks, filter, sort, dispatch }) {
       </form>
 
       <div className="task-controls">
-        <button
-          onClick={() =>
-            dispatch({
-              type: "FILTER",
-              filter: "all",
-            })
-          }
-        >
-          Todas
-        </button>
-
-        <button
-          onClick={() =>
-            dispatch({
-              type: "FILTER",
-              filter: "active",
-            })
-          }
-        >
-          Pendientes
-        </button>
-
-        <button
-          onClick={() =>
-            dispatch({
-              type: "FILTER",
-              filter: "completed",
-            })
-          }
-        >
-          Completadas
-        </button>
-
-        <button onClick={() => dispatch({ type: "SORT" })}>
+        <button onClick={() => handleFilter("all")}>Todas</button>
+        <button onClick={() => handleFilter("active")}>Pendientes</button>
+        <button onClick={() => handleFilter("completed")}>Completadas</button>
+        <button onClick={handleSort}>
           Orden: {sort === "asc" ? "A–Z" : "Z–A"}
         </button>
       </div>
 
-      <p>Misiones encontradas: {visibleTasks.length}</p>
+      <p>Misiones encontradas: {processedTasks.length}</p>
 
       <ul className="task-list">
-        {visibleTasks.map((task) => (
+        {processedTasks.map((task) => (
           <li key={task.id} className="task-item">
             <div>
               <strong>{task.title}</strong>
@@ -123,34 +149,13 @@ export default function TaskList({ tasks, filter, sort, dispatch }) {
             </div>
 
             <div className="task-actions">
-              <button
-                onClick={() =>
-                  dispatch({
-                    type: "TOGGLE",
-                    id: task.id,
-                  })
-                }
-              >
+              <button onClick={() => handleToggle(task.id)}>
                 {task.done ? "Reabrir" : "Completar"}
               </button>
-
-              <button
-                onClick={() =>
-                  dispatch({
-                    type: "REMOVE",
-                    id: task.id,
-                  })
-                }
-              >
-                Eliminar
-              </button>
+              <button onClick={() => handleRemove(task.id)}>Eliminar</button>
             </div>
           </li>
         ))}
-
-        {visibleTasks.length === 0 && (
-          <li>No hay misiones en esta categoría.</li>
-        )}
       </ul>
     </section>
   );
